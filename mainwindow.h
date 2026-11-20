@@ -27,7 +27,7 @@ private:
     void loadWords();
     QStringList parseQuery(const QString &raw) const;
     bool runSearch(const QStringList &words);
-    void fillRankingTable(const QStringList &words);
+    bool prepareRanking(QSqlQuery &q, const QStringList &words_prep);
 
     Ui::MainWindow *ui;
 
