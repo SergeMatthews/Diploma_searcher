@@ -171,18 +171,10 @@ QStringList MainWindow::parseQuery(const QString &raw) const
     return words;
 }
 
-// Запуск поиска по документам
-bool MainWindow::runSearch(const QStringList &words)
+bool MainWindow::prepareRanking(QSqlQuery &q, const QStringList &words_prep)
 {
-    ui->textBrowser->clear();
-
-    if (words.isEmpty()) {
-        ui->textBrowser->setPlainText(QStringLiteral("Введите хотя бы одно слово."));
-        return false;
-    }
-
     QStringList ph;
-    for (int i = 0; i < words.size(); ++i)
+    for (int i = 0; i < words_prep.size(); ++i)
         ph << QStringLiteral(":w%1").arg(i);
 
     const QString sql = QStringLiteral(
@@ -195,12 +187,11 @@ bool MainWindow::runSearch(const QStringList &words)
         "HAVING COUNT(DISTINCT w.word) = %2 "
         "ORDER BY relevance DESC "
         "LIMIT 10"
-    ).arg(ph.join(QStringLiteral(", "))).arg(words.size());
+    ).arg(ph.join(QStringLiteral(", "))).arg(words_prep.size());
 
-    QSqlQuery q(m_db);
     q.prepare(sql);
-    for (int i = 0; i < words.size(); ++i)
-        q.bindValue(ph[i], words[i]);
+    for (int i = 0; i < words_prep.size(); ++i)
+        q.bindValue(ph[i], words_prep[i]);
 
     if (!q.exec()) {
         QMessageBox::critical(this,
@@ -209,6 +200,22 @@ bool MainWindow::runSearch(const QStringList &words)
                               q.lastError().text());
         return false;
     }
+}
+
+
+// Запуск поиска по документам
+bool MainWindow::runSearch(const QStringList &words)
+{
+    ui->textBrowser->clear();
+
+    if (words.isEmpty()) {
+        ui->textBrowser->setPlainText(QStringLiteral("Введите хотя бы одно слово."));
+        return false;
+    }
+
+    QSqlQuery q(m_db);
+    if (!(prepareRanking(q, words)))
+        return false;
 
     QString out;
     int count = 0;
@@ -245,35 +252,9 @@ void MainWindow::onShowRanking()
     if (!m_hasSearch || m_lastQueryWords.isEmpty())
         return;
 
-    QStringList ph;
-    for (int i = 0; i < m_lastQueryWords.size(); ++i)
-        ph << QStringLiteral(":w%1").arg(i);
-
-    const QString sql = QStringLiteral(
-        "SELECT d.path, SUM(f.frequency) AS relevance "
-        "FROM documents d "
-        "JOIN word_frequencies f ON f.document_id = d.id "
-        "JOIN words w ON w.id = f.word_id "
-        "WHERE w.word IN (%1) "
-        "GROUP BY d.id, d.path "
-        "HAVING COUNT(DISTINCT w.word) = %2 "
-        "ORDER BY relevance DESC "
-        "LIMIT 10"
-    ).arg(ph.join(QStringLiteral(", "))).arg(m_lastQueryWords.size());
-
     QSqlQuery q(m_db);
-    q.prepare(sql);
-    for (int i = 0; i < m_lastQueryWords.size(); ++i)
-        q.bindValue(ph[i], m_lastQueryWords[i]);
-
-    if (!q.exec()) {
-        QMessageBox::critical(this,
-                              QStringLiteral("Ошибка"),
-                              QStringLiteral("Ошибка выполнения запроса:\n") +
-                              q.lastError().text());
+    if (!(prepareRanking(q, m_lastQueryWords)))
         return;
-    }
-
 
     ui->tabWidget->setCurrentWidget(ui->tab_2);
 
